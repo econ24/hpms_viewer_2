@@ -1,0 +1,34 @@
+#hpms-menubar {
+	position: relative;
+	z-index: 5;
+}
+
+#hpms-map {
+	background-color: #686;
+}
+
+#hpms-map-legend-container {
+	padding: 5px;
+	background-color: rgba(96, 78, 108, 0.5);
+	opacity: 0;
+	position: absolute;
+	right: 0px;
+	left: 0px;
+	margin: auto;
+	top: 10px;
+}
+
+.hpms-map-legend-label {
+	width: 80px;
+	height: 20px;
+	float: left;
+	line-height: 20px;
+	padding: 3px 0px 1px 5px;
+	font-weight: bold;
+	display: inline;
+}
+
+.hpms-map-legend-label.last-label {
+	padding: 3px 5px 1px 0px;
+	text-align: right;
+}
