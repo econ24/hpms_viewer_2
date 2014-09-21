@@ -1,0 +1,20 @@
+body {
+	margin: 0px;
+}
+
+.avl-minimap-map {
+	position: absolute;
+	overflow: hidden;
+}
+
+.avl-minimap-layer {
+	position: absolute;
+}
+
+.avl-minimap-path {
+	fill: none;
+	stroke: #000;
+	stroke-width: 1px;
+  	stroke-linejoin: round;
+  	stroke-linecap: square;
+}

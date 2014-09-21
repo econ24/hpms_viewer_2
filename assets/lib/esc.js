@@ -50,6 +50,21 @@
 	}
 	this.esc = esc;
 
+      /*
+      Removes the element from the array.
+      Does not keep the array's order.
+      */
+      esc.arrayRemove = function(array, element) {
+            for (var i = 0; i < array.length; i++) {
+                  if (array[i] === element)  {
+                        array[i] = array[array.length-1];
+                        array.pop();
+                        return true;
+                  }
+            }
+            return false;
+      }
+
       esc.fips2state = function(fips, abbrev) {
             var fipsMap = {
                   02: {abbrev: 'AK', full: 'Alaska'},

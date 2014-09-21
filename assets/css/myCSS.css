@@ -1,13 +1,5 @@
-#hpms-menubar {
-	position: relative;
-	z-index: 5;
-}
-
-#hpms-map {
-	background-color: #686;
-}
-
 #hpms-map-legend-container {
+	width: 935px;
 	padding: 5px;
 	background-color: rgba(96, 78, 108, 0.5);
 	opacity: 0;

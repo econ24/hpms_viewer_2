@@ -11,64 +11,74 @@ var avlmenu = (function() {
 			.attr('id', uniqueGroupID);
 	}
 
+	avlmenu.populateTable = function(selection, data) {
+			var tables = selection.selectAll('table')
+				.data(data);
+
+			tables.exit().remove();
+
+			tables.enter().append('table')
+				.attr('class', 'avl-menu-table');
+
+			var rows = tables.selectAll('tr')
+				.data(function(d) { return d; });
+
+			rows.exit().remove();
+
+			rows.enter().append('tr');
+
+			rows.classed('avl-menu-odd-row', function(d, i) { return i%2 })
+				.classed('avl-menu-table-header', function(d) { return d.tableHeader; })
+				.classed('avl-menu-row-header', function(d) { return d.rowHeader; });
+
+			var columns = rows.selectAll('td')
+				.data(function(d) { return d; });
+
+			columns.exit().remove();
+
+			columns.enter().append('td');
+
+			columns
+				.text(function(d) { return textAccessor(d); })
+				.attr('class', 'avl-menu-table-column')
+				.classed('avl-menu-row-header', function(d, i) { return i===0; });
+
+			d3.selectAll('.avl-menu-table-header')
+				.each(function(d) {
+					if (d.span) {
+						d3.select(this).selectAll('td')
+							.attr('colspan', d.span);
+					}
+				})
+	}
+
 	avlmenu.Popup = function() {
-		var _popup = d3.select('body').append('div')
-				.attr('class', 'avl-menu-popup')
-				.classed('avl-menu-popup-hide', true),
-			text = function(d) { return d.text; },
-			bounds,
-			left,
-			top,
-			right,
-			bottom,
-			activationType = 'manual',
-			activation = null,
-			active = false,
-			positions = {
+		var _popup = null,
+			visible = false,
+			data = [],
+			position = 'top-right',
+			allPositions = {
+				'top-right': 'avl-menu-top-right',
 				'bottom-right': 'avl-menu-bottom-right',
-				'bottom-left': 'avl-menu-bottom-eft',
-				'top-left': 'avl-menu-top-left',
-				'top-right': 'avl-menu-top-right'
-			},
-			position = 'bottom-right';
-
-		_popup.append('table');
-
-		function popup(selection) {
-			setPopupPosition();
-
-			if (activationType == 'manual') {
-				if (active) {
-					show();
-				}
-				else {
-					hide();
-				}
+				'bottom-left': 'avl-menu-bottom-left',
+				'top-left': 'avl-menu-top-left'
 			}
+			textAccessor = function(d) { return d; };
 
-			if (selection) {
-				activation(selection);
+		function popup() {
+			_popup.classed('avl-menu-popup-hide', !visible);
+
+			for (var key in allPositions) {
+				_popup.classed(allPositions[key], false);
 			}
+			_popup.classed(allPositions[position], true);
+
+			_popup.call(avlmenu.populateTable, data);
 		}
-
-		popup.text = function(t) {
-			if (!arguments.length) {
-				return text;
-			}
-			text = t;
-			return popup;
-		}
-		popup.bounds = function(b) {
-			if (!arguments.length) {
-				return bounds;
-			}
-			if (typeof b == 'function') {
-				bounds = b();
-			}
-			else {
-				bounds = b.node();
-			}
-			return popup;
+		popup.init = function(selection) {
+			_popup = selection.append('div')
+				.attr('class', 'avl-menu-popup')
+				.classed('avl-menu-popup-hide', !visible);
 		}
 		popup.position = function(p) {
 			if (!arguments.length) {
@@ -77,149 +87,19 @@ var avlmenu = (function() {
 			position = p;
 			return popup;
 		}
-		popup.activation = function(a) {
+		popup.visible = function(bool) {
 			if (!arguments.length) {
-				return activationType;
+				return visible;
 			}
-			activationType = a;
-			getActivation();
+			visible = bool;
 			return popup;
 		}
-		popup.visible = function(v) {
+		popup.data = function(d) {
 			if (!arguments.length) {
-				return active;
+				return data;
 			}
-			active = Boolean(v);
+			data = d;
 			return popup;
-		}
-
-		function getActivation() {
-			switch(activationType) {
-				case 'mouseover':
-					activation = onMouse;
-					break;
-				case 'click':
-					activation = onClick;
-					break;
-				default:
-					activation = null;
-			}
-		}
-
-		function onMouse(selection) {
-			selection
-				.on('mouseover.avl-menu', show)
-				.on('mouseout.avl-menu', hide);
-
-			if (position == 'floater') {
-				selection
-					.on('mousemove.avl-menu', move)
-					.style('position', 'fixed');
-			}
-		}
-
-		function onClick(selection) {
-			selection.on('click', clicked);
-		}
-
-		function setPopupPosition() {
-			for (key in positions) {
-				_popup.classed(positions[key], false);
-			}
-			if (position in positions) {
-				_popup.classed(positions[position], true);
-			}
-		}
-
-		function calcBounds() {
-			if (bounds) {
-				left = bounds.offsetLeft;
-				top = bounds.offsetTop;
-				right = left + bounds.offsetWidth;
-				bottom = top + bounds.offsetHeight;
-			}
-			else {
-				left = 0;
-				top = 0;
-				right = window.innerWidth;
-				bottom = window.innerHeight;
-			}
-		}
-
-		function clicked(d) {
-			active = !active;
-
-			if (active) {
-				show.bind(this)(d);
-			}
-			else {
-				hide.bind(this)(d);
-			}
-		}
-
-		function show(d) {
-			calcBounds();
-			displayText(d);
-			hidePopup(false);
-		}
-		function hide() {
-			hidePopup(true);
-		}
-		function move() {
-			var position = {
-				left: 'auto',
-				top: 'auto',
-				right: 'auto',
-				bottom: 'auto'
-			}
-			var node = _popup.node();
-
-			if (d3.event.x + node.offsetWidth > right) {
-				position.right = ((bounds.offsetLeft+bounds.offsetWidth)-d3.event.x+5)+'px';
-			}
-			else {
-				position.left = (d3.event.x+5)+'px';
-			}
-
-			if (d3.event.y + node.offsetHeight > bottom) {
-				position.bottom = ((bounds.offsetTop+bounds.offsetHeight)-d3.event.y+5)+'px';
-			}
-			else {
-				position.top = (d3.event.y+5)+'px';
-			}
-			_popup.style(position);
-		}
-
-		function hidePopup(bool) {
-			_popup.classed('avl-menu-popup-hide', bool);
-		}
-
-		function displayText(d) {
-			var txt;
-			if (typeof text == 'function') {
-				txt = text(d);
-			}
-			else {
-				txt = text;
-			}
-
-			var rows = _popup.selectAll('table')
-				.selectAll('tr').data(txt);
-
-			rows.exit().remove();
-
-			rows.enter().append('tr');
-
-			var data = rows
-				.classed('avl-menu-odd-row', function(d, i) { return i%2; })
-				.selectAll('td')
-				.data(function(d) { return d; })
-
-			data.enter().append('td');
-
-			data.exit().remove();
-
-			data.text(function(d) { return d; });
 		}
 
 		return popup;
@@ -231,8 +111,7 @@ var avlmenu = (function() {
 			parent,
 			groupID,
 			data = [],
-			text = function(d) { return d.text; },
-			events = {};
+			text = function(d) { return d.text; };
 
 		function tab(selection, _styles) {
 			if (selection) {
@@ -275,33 +154,12 @@ var avlmenu = (function() {
 			if (styles['text-indent']) {
 				indent = parseInt(styles['text-indent']);
 			}
-			
-			_button.on(events);
-			events = {};
 		}
 		tab.data = function(d) {
 			if (!arguments.length) {
 				return data;
 			}
 			data = d;
-			return tab;
-		}
-		tab.on = function(event, action) {
-			var obj = {};
-			if (arguments.length == 1) {
-				obj = arguments[0];
-			}
-			else {
-				obj[event] = action;
-			}
-			if (_button) {
-				_button.on(obj);
-			}
-			else {
-				for (var key in obj) {
-					events[key] = obj[key];
-				}
-			}
 			return tab;
 		}
 
@@ -315,8 +173,12 @@ var avlmenu = (function() {
 			}
 
 			var button = avlmenu.Button()
-				.data([{ text: text(d), tab: t, id: d.id }])
-				.on('click.avl-menu-tab-toggle', toggleTab);
+				.data([{ text: text(d), tab: t }])
+				.on('click.avl-menu-tab-toggle', toggleTab)
+
+			if (d.on) {
+				button.on(d.on);
+			}
 
 			container.insert('g', ':first-child')
 				.attr('id', uniqueGroupID).call(button);
@@ -414,12 +276,12 @@ var avlmenu = (function() {
 				selection = _dropdown;
 
 			if (arguments.length == 2) {
-				if (obj.index) {
-					_dropdown
-						.filter(function(d, i) { return i == obj.index; });
+				if (obj.id) {
+					selection = _dropdown
+						.filter(function(d) { return d.id == obj.id; });
 				}
 				else if (obj.filter) {
-					_dropdown
+					selection = _dropdown
 						.filter(function(d, i) { return obj.filter.bind(this)(d, i); });
 				}
 			}

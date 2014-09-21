@@ -134,7 +134,7 @@
             .attr('class', 'info-text');
 
 		function mousemoved() {
-		  	info.text(formatLocation(projection.invert(d3.mouse(this)), projection.scale()));
+		  	info.text(avlmap.formatLocation(projection.invert(d3.mouse(this)), projection.scale()));
 		}
 
 		function formatLocation(p, k) {
@@ -443,8 +443,8 @@
             startLoc = options.startLoc || [-73.824, 42.686], // defaults to Albany, NY
             zoomExtent = [minZoom, maxZoom];
 
-		var width = parseInt(d3.select(self.id).attr('width'))
-		    height = parseInt(d3.select(self.id).attr('height'))
+		var width = d3.select(self.id).node().offsetWidth,
+		    height = d3.select(self.id).node().offsetHeight,
 		    prefix = prefixMatch();
 
 		var MAP_LAYERS = [],
@@ -480,7 +480,7 @@
 		    .call(zoom);
 
 		var vectorLayer = map.append("g")
-		    .attr("class", "layer");
+		    .attr("class", "avl-layer");
 
 		self.zoomMap = function() {
 			tileGen
@@ -497,11 +497,11 @@
 
 			var vectorTiles = vectorLayer
 			    .style(prefix + "transform", matrix3d(tiles.scale, tiles.translate))
-			    .selectAll(".tile")
+			    .selectAll(".avl-tile")
 			    .data(tiles, function(d) { return d; });
 
 			vectorTiles.enter().append("svg")
-				.attr("class", "tile")
+				.attr("class", "avl-tile")
 
 			vectorTiles
 				.style("left", function(d) { return d[0] * 256 + "px"; })
@@ -655,6 +655,15 @@
 	avlmap.RasterLayer = function(options) {
 		return new RasterLayer(options);
 	}
+
+    // ##########
+    // public functions
+    // ##########
+    avlmap.formatLocation = function(p, k) {
+        var format = d3.format("." + Math.floor(Math.log(k) / 2 - 2) + "f");
+        return (p[1] < 0 ? format(-p[1]) + "°S" : format(p[1]) + "°N") + "   "
+             + (p[0] < 0 ? format(-p[0]) + "°W" : format(p[0]) + "°E");
+    }
 
 	this.avlmap = avlmap;
 })()

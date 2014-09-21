@@ -45,6 +45,7 @@ body {
 .avl-menu-dropdown-container {
 	overflow-y: hidden;
 	overflow-x: hidden;
+	display: block;
 }
 .avl-menu-dropdown {
 	width: 185px;
@@ -56,10 +57,7 @@ body {
 	z-index: 5;
 }
 
-.avl-menu-tab-container {
-	overflow-y: hidden;
-	overflow-x: hidden;
-}
+.avl-menu-tab-container {}
 
 .avl-menu-tab {
 	position: absolute;
@@ -69,26 +67,49 @@ body {
 	position: absolute;
 	background-color: rgba(96, 78, 108, 0.5);
 	padding: 5px;
+	z-index: 20;
 }
 .avl-menu-popup-hide {
 	display: none;
 }
-.avl-menu-popup table {
+
+.avl-menu-table {
 	background: #cbaf42;
 	color: #614e6c;
 	border-collapse: collapse;
+	width: 100%;
 }
-
-.avl-menu-popup td {
+.avl-menu-table td, .avl-menu-table th {
 	padding: 2px 15px;
+	white-space: pre;
 }
-
-.avl-menu-popup .avl-menu-odd-row {
+.avl-menu-table-column {
+	text-align: right;
+}
+.avl-menu-table-header {
+	background: #614e6c;
+	color: #cbaf42;
+	font-weight: bolder;
+	font-size: 15pt;
+	text-align:left;
+}
+.avl-menu-table-header td {
+	padding-left: 8px;
+	text-align: left;
+}
+.avl-menu-row-header {
+	font-weight: bold;
+	text-align: left;
+}
+.avl-menu-odd-row {
 	background: #ab8f22;
 }
 
 .avl-menu-bottom-right {
-	position: fixed;
 	right: 10px;
 	bottom: 10px;
+}
+.avl-menu-top-right {
+	right: 10px;
+	top: 10px;
 }
