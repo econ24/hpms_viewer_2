@@ -11,14 +11,84 @@ var avlmenu = (function() {
 			.attr('id', uniqueGroupID);
 	}
 
-	avlmenu.populateTable = function(selection, data) {
+	function SelectionDecorator() {
+		var classes = {},
+			styles = {},
+			attributes = {},
+			indent = 0,
+			secondaryDecorator;
+
+		function decorator(selection) {
+			selection.style(styles)
+				.attr(attributes);
+
+			for (var cls in classes) {
+				selection.classed(cls, classes[cls]);
+			}
+			return selection;
+		}
+
+		decorator.applyClasses = function(selection) {
+			for (var cls in classes) {
+				selection.classed(cls, classes[cls]);
+			}
+			return selection;
+		}
+		decorator.applyStyles = function(selection) {
+			return selection.style(styles);
+		}
+		decorator.applyAttributes = function(selection) {
+			return selection.attr(attributes);
+		}
+
+		decorator.classes = function(c) {
+			if (!arguments.length) {
+				return classes;
+			}
+			classes = c;
+			return decorator;
+		}
+		decorator.styles = function(s) {
+			if (!arguments.length) {
+				return styles;
+			}
+			styles = s;
+			return decorator;
+		}
+		decorator.attributes = function(a) {
+			if (!arguments.length) {
+				return attributes;
+			}
+			attributes = a;
+			return decorator;
+		}
+		decorator.indent = function(i) {
+			if (!arguments.length) {
+				return indent;
+			}
+			indent = i;
+			return decorator;
+		}
+		decorator.secondaryDecorator = function(dec) {
+			if (!arguments.length) {
+				return secondaryDecorator;
+			}
+			secondaryDecorator = dec;
+			return decorator;
+		}
+
+		return decorator;
+	}
+
+	avlmenu.populateTable = function(selection, data, textAccessor, click) {
 			var tables = selection.selectAll('table')
 				.data(data);
 
 			tables.exit().remove();
 
 			tables.enter().append('table')
-				.attr('class', 'avl-menu-table');
+				.attr('class', 'avl-menu-table')
+				.each(function() { this.active = true; });
 
 			var rows = tables.selectAll('tr')
 				.data(function(d) { return d; });
@@ -27,12 +97,16 @@ var avlmenu = (function() {
 
 			rows.enter().append('tr');
 
-			rows.classed('avl-menu-odd-row', function(d, i) { return i%2 })
-				.classed('avl-menu-table-header', function(d) { return d.tableHeader; })
+			rows.classed('avl-menu-table-header', function(d) { return d.tableHeader; })
+				.classed('avl-menu-even-row', function(d, i) { return !(i%2) })
 				.classed('avl-menu-row-header', function(d) { return d.rowHeader; });
 
+			if (click) {
+				tables.call(onTableClick, data, click);
+			}
+
 			var columns = rows.selectAll('td')
-				.data(function(d) { return d; });
+				.data(function(d) { return d; }, function(d) { return d; });
 
 			columns.exit().remove();
 
@@ -52,6 +126,261 @@ var avlmenu = (function() {
 				})
 	}
 
+	function onTableClick(tables, data, click) {
+		var table, tableSelection;
+
+		tables.each(function(tableData) {
+			table = this;
+			tableSelection = d3.select(this);
+
+			tableSelection
+				.selectAll('.avl-menu-table-header')
+				.each(function(data, index) {
+					var header = this;
+					
+					d3.select(this).call(clickCases, data, index);
+				})
+		});
+
+		function clickCases(selection, data, index) {
+			switch (click) {
+				case 'close':
+					selection.on('click.avl-menu', function() {
+						d3.event.stopPropagation();
+						table.active = !table.active;
+						tableSelection.selectAll('tr').filter(function(d) { return this != header; })
+							.classed('avl-menu-table-inactive', !table.active);
+					})
+					break;
+			}
+		}
+	}
+
+	avlmenu.Legend = function() {
+		var _legend,
+			type,
+			scale,
+			toggles,
+			decorator,
+			toggleDecorator,
+			onSelect,
+			onDeselect,
+			top = 'auto', left = 'auto', bottom = 'auto', right = 'auto',
+			labeler = function(d) { return d; },
+			visible = true,
+			back;
+
+		function legend() {
+			var data = [];
+
+			scale.domain().forEach(function(scl) {
+				var d = {text: labeler(scl), datum: scl};
+				if (onSelect) {
+					d.select = onSelect;
+				}
+				if (onDeselect) {
+					d.deselect = onDeselect;
+				}
+				data.push(d);
+			})
+			
+			toggles.data(data)();
+
+			back.classed('avl-menu-popup-hide', !visible);
+		}
+		legend.init = function(selection, decorator) {
+			back = selection.append('div')
+				.attr('class', 'avl-menu-legend')
+				.style({top: top, right: right, bottom: bottom, left: left})
+				.style({padding: '5px', 'background-color': 'rgba(96, 78, 108, 0.5)'})
+
+			_legend = back
+				.append('div')
+					.style({'background-color': '#412c43', height: '24px'})
+				.append('div');
+
+			if (decorator) {
+				_legend.call(decorator);
+			}
+
+			toggleDecorator = SelectionDecorator()
+				.classes({'avl-menu-legend-label': true})
+				.styles({'background-color': function(d) { return scale(d.datum); } });
+
+			toggles = avlmenu.Toggle()
+				.multi(true)
+				.init(_legend, toggleDecorator);
+
+			return legend;
+		}
+		legend.labeler = function(l) {
+			if (!arguments.length) {
+				return labeler;
+			}
+			labeler = l;
+			return legend;
+		}
+		legend.scale = function(s) {
+			if (!arguments.length) {
+				return scale;
+			}
+			scale = s;
+			return legend;
+		}
+		legend.type = function(t) {
+			if (!arguments.length) {
+				return type;
+			}
+			type = t;
+			return legend;
+		}
+		legend.top = function(t) {
+			if (!arguments.length) {
+				return top;
+			}
+			top = t;
+			return legend;
+		}
+		legend.bottom = function(b) {
+			if (!arguments.length) {
+				return bottom;
+			}
+			bottom = b;
+			return legend;
+		}
+		legend.left = function(l) {
+			if (!arguments.length) {
+				return left;
+			}
+			left = l;
+			return legend;
+		}
+		legend.right = function(r) {
+			if (!arguments.length) {
+				return right;
+			}
+			right = r;
+			return legend;
+		}
+		legend.onSelect = function(s) {
+			if (!arguments.length) {
+				return onSelect;
+			}
+			onSelect = s;
+			return legend;
+		}
+		legend.onDeselect = function(d) {
+			if (!arguments.length) {
+				return onDeselect;
+			}
+			onDeselect = d;
+			return legend;
+		}
+		legend.visible = function(bool) {
+			if (!arguments.length) {
+				return visible;
+			}
+			visible = bool;
+			return legend;
+		}
+		return legend;
+	}
+
+	avlmenu.Footer = function() {
+		var _footer = null,
+			text;
+
+		function footer() {
+			_footer.text(text);
+		}
+		footer.init = function(selection, decorator) {
+			_footer = selection.append('div')
+				.attr('class', 'avl-menu-footer')
+				.text(text);
+
+			if (decorator) {
+				_footer.call(decorator);
+			}
+			return footer;
+		}
+		footer.text = function(t) {
+			if (!arguments.length) {
+				return text;
+			}
+			text = t;
+			return footer;
+		}
+		return footer;
+	}
+
+	avlmenu.Banner = function() {
+		var back = null,
+			_banner = null,
+			text = '',
+			left = 0,
+			top = 0,
+			awake = false;
+
+		function banner() {
+			_banner.text(text)
+
+			back.transition().duration(500)
+				.style('top', top+'px')
+				.style('left', left+'px');
+
+			_banner.classed('avl-menu-banner-awake', awake);
+		}
+		banner.init = function(selection, decorator) {
+			back = selection.append('div')
+				.attr('class', 'avl-menu-banner-back')
+			_banner = back.append('div')
+				.attr('class', 'avl-menu-banner');
+
+			if (decorator) {
+				_banner.call(decorator);
+			}
+
+			return banner;
+		}
+		banner.left = function(l) {
+			if (!arguments.length) {
+				return left;
+			}
+			left = l;
+			return banner;
+		}
+		banner.top = function(t) {
+			if (!arguments.length) {
+				return top;
+			}
+			top = t;
+			return banner;
+		}
+		banner.text = function(t) {
+			if (!arguments.length) {
+				return text;
+			}
+			text = t;
+			return banner;
+		}
+		banner.awake = function(bool) {
+			if (!arguments.length) {
+				return awake;
+			}
+			awake = bool;
+			return banner;
+		}
+		banner.on = function(type, _event, capture) {
+			if (arguments.length && arguments.length < 2) {
+				return _banner.on(type);
+			}
+			_banner.on(type, _event, capture);
+			return banner;
+		}
+
+		return banner;
+	}
+
 	avlmenu.Popup = function() {
 		var _popup = null,
 			visible = false,
@@ -61,9 +390,11 @@ var avlmenu = (function() {
 				'top-right': 'avl-menu-top-right',
 				'bottom-right': 'avl-menu-bottom-right',
 				'bottom-left': 'avl-menu-bottom-left',
-				'top-left': 'avl-menu-top-left'
-			}
-			textAccessor = function(d) { return d; };
+				'top-left': 'avl-menu-top-left',
+				'floater': 'avl-menu-floater'
+			},
+			textAccessor = function(d) { return d; },
+			onClick = 'close';
 
 		function popup() {
 			_popup.classed('avl-menu-popup-hide', !visible);
@@ -73,12 +404,27 @@ var avlmenu = (function() {
 			}
 			_popup.classed(allPositions[position], true);
 
-			_popup.call(avlmenu.populateTable, data);
+			_popup.call(avlmenu.populateTable, data, textAccessor, onClick);
 		}
-		popup.init = function(selection) {
+		popup.init = function(selection, decorator) {
 			_popup = selection.append('div')
 				.attr('class', 'avl-menu-popup')
 				.classed('avl-menu-popup-hide', !visible);
+			if (position == 'floater') {
+				selection.call(makeFloater);
+			}
+
+			if (decorator) {
+				_popup.call(decorator);
+			}
+			return popup;
+		}
+		popup.onClick = function(type) {
+			if (!arguments.length) {
+				return onClick;
+			}
+			onClick = type;
+			return popup;
 		}
 		popup.position = function(p) {
 			if (!arguments.length) {
@@ -102,98 +448,79 @@ var avlmenu = (function() {
 			return popup;
 		}
 
+		function makeFloater(selection) {
+			selection.on('mousemove.avl-menu', function() {
+				var x = d3.event.x + 5,
+					y = d3.event.y + 5;
+
+				var width = _popup.node().offsetWidth,
+					height = _popup.node().offsetHeight;
+
+				if (x+width > window.innerWidth) {
+					x = x-10 - width;
+				}
+				if (y+height > window.innerHeight) {
+					y = y-10 - height;
+				}
+
+				_popup.style('left', x+'px')
+					.style('top', y+'px')
+			})
+		}
+
 		return popup;
 	}
 
 	avlmenu.Tab = function() {
-		var _tab,
-			_button,
-			parent,
-			groupID,
+		var toggles,
 			data = [],
-			text = function(d) { return d.text; };
+			parent,
+			text = function(d) { return d.text; },
+			activeTab = 0,
+			dispatcher = d3.dispatch('tabfocus', 'tabunfocus');
 
-		function tab(selection, _styles) {
-			if (selection) {
-				parent = selection;
-				groupID = '#'+selection.attr('id');
-			}
-			if (_styles) {
-				styles = _styles;
-			}
-			if (!(selection || parent)) {
-				parent = d3.select('body');
-			}
+		function tab() {
+			toggles.data(data)();
+		}
+		tab.init = function(selection, _decorator) {
+			parent = selection;
+			toggles = avlmenu.Toggle()
+				.deselectAll(false)
+				.makeActive(activeTab)
+				.init(selection, _decorator);
 
-			var container = parent
-				.selectAll(groupID+' > .avl-menu-tab-container')
-				.data(data);
-
-			container.exit().remove();
-
-			container.enter().append('g')
-				.attr('class', 'avl-menu-tab-container')
-				.each(createTab);
-
-			var tabs = [];
-
- 			_button = parent.selectAll(groupID+' > .avl-menu-tab-container > g > .avl-menu-button')
- 				.each(function(d) { tabs.push(d.tab.attr('id')); });
-
- 			_tab = d3.selectAll('.avl-menu-tab')
- 				.filter(function(d) { return tabs.indexOf(d3.select(this).attr('id')) >= 0; });
-
- 			if (selection) {
- 				_button.filter(function(d, i) { return i === 0; })
- 					.each(toggleTab);
- 			}
-
-			if (styles) {
-				container.style(styles);
-			}
-			if (styles['text-indent']) {
-				indent = parseInt(styles['text-indent']);
-			}
+			return tab;
 		}
 		tab.data = function(d) {
 			if (!arguments.length) {
 				return data;
 			}
 			data = d;
+
+			data.forEach(function(d, i) {
+				d.tab = d3.select(d.id)
+					.classed('avl-menu-tab', true)
+					.style('display', 'none');
+
+				d.select = onSelect;
+
+				d.deselect = onDeselect;
+			});
+
 			return tab;
 		}
-
-		function createTab(d, i) {
-			var container = d3.select(this),
-				t;
-
-			if (d.id) {
-				t = d3.select(d.id)
-					.attr('class', 'avl-menu-tab');
-			}
-
-			var button = avlmenu.Button()
-				.data([{ text: text(d), tab: t }])
-				.on('click.avl-menu-tab-toggle', toggleTab)
-
-			if (d.on) {
-				button.on(d.on);
-			}
-
-			container.insert('g', ':first-child')
-				.attr('id', uniqueGroupID).call(button);
+		tab.on = function(type, func) {
+			dispatcher.on(type, func);
 		}
 
-		function toggleTab(d) {
-			_button
-				.classed('avl-menu-button-selected', false);
-
-			_tab.style('display', 'none');
-
-			d3.select(this)
-				.classed('avl-menu-button-selected', true);
-
+		function onSelect(d, i) {
 			d.tab.style('display', 'block');
+			activeTab = i;
+			dispatcher.tabfocus.call(this, d, i);
+		}
+		function onDeselect(d, i) {
+			d.tab.style('display', 'none');
+			dispatcher.tabunfocus.call(this, d, i);
 		}
 
 		return tab;
@@ -204,24 +531,15 @@ var avlmenu = (function() {
 			_toggles,
 			parent,
 			groupID,
-			styles,
+			styles = {},
+			classes = [],
 			data = [],
 			text = function(d) { return d.text; },
 			multi = false,
-			indent = 0;
+			selfDecorator,
+			appendDecorator = SelectionDecorator();
 
-		function dropdown(selection, _styles) {
-			if (selection) {
-				parent = selection;
-				groupID = '#'+selection.attr('id');
-			}
-			if (_styles) {
-				styles = _styles;
-			}
-			if (!(selection || parent)) {
-				parent = d3.select('body');
-			}
-
+		function dropdown() {
 			var container = parent.selectAll(groupID+' > .avl-menu-dropdown-container')
 				.data(data);
 
@@ -231,7 +549,9 @@ var avlmenu = (function() {
 				.attr('class', 'avl-menu-dropdown-container')
 				.each(createDropdown);
 
- 			_toggles = parent.selectAll(groupID+' > .avl-menu-dropdown-container > g > .avl-menu-button');
+ 			_toggles = parent.selectAll(groupID+' > .avl-menu-dropdown-container > g > .avl-menu-button')
+ 				.classed('avl-menu-dropdown-header', true)
+				.call(selfDecorator.applyClasses);
 
 			_dropdown = parent.selectAll(groupID+' > .avl-menu-dropdown-container > .avl-menu-dropdown');
 
@@ -241,13 +561,19 @@ var avlmenu = (function() {
 				return maxHeight+'px';
 			});
 
-			if (styles) {
-				container.style(styles);
-				_dropdown.style(styles);
-			}
-			if (styles['text-indent']) {
-				indent = parseInt(styles['text-indent']);
-			}
+			container.call(selfDecorator.applyStyles);
+			_dropdown.call(selfDecorator.applyStyles);
+		}
+		dropdown.init = function(selection, _decorator) {
+			parent = selection;
+			groupID = '#'+selection.attr('id');
+			selfDecorator = _decorator;
+			var indent = _decorator.indent()+15;
+
+			appendDecorator
+				.indent(indent)
+				.styles({'max-height': 'none', 'overflow-y': 'hidden', 'text-indent': indent+'px'});
+			return dropdown;
 		}
 		dropdown.data = function(d) {
 			if (!arguments.length) {
@@ -272,8 +598,7 @@ var avlmenu = (function() {
 			return dropdown;
 		}
 		dropdown.append = function(object, obj) {
-			var styles = {'max-height': 'none', 'overflow-y': 'hidden', 'text-indent': (indent+15)+'px'},
-				selection = _dropdown;
+			var selection = _dropdown;
 
 			if (arguments.length == 2) {
 				if (obj.id) {
@@ -288,7 +613,8 @@ var avlmenu = (function() {
 
 			selection
 				.append('g').attr('id', uniqueGroupID)
-				.call(object, styles);
+				.call(object.init, appendDecorator);
+			object();
 
 			return dropdown;
 		}
@@ -311,13 +637,8 @@ var avlmenu = (function() {
 			var toggle = avlmenu.Toggle()
 				.data([{ text: text(d), select: toggleDropdown, deselect: toggleDropdown, dropdown: dd }]);
 
-			container.insert('g', ':first-child').attr('id', uniqueGroupID).call(toggle);
-
-			// dd.style('max-height', function() {
-			// 	var maxHeight = window.innerHeight-this.offsetTop;
-
-			// 	return maxHeight+'px';
-			// });
+			container.insert('g', ':first-child').attr('id', uniqueGroupID).call(toggle.init);
+			toggle();
 		}
 
 		function toggleDropdown(d) {
@@ -337,6 +658,8 @@ var avlmenu = (function() {
 			}
 
 			if (this.selected) {
+				_dropdown.style('display', null);
+
 				dd.style('height', 'auto');
 				var height = dd.node().offsetHeight;
 				dd.style('height', '0px');
@@ -345,6 +668,7 @@ var avlmenu = (function() {
 			}
 			else {
 				adjustHeight(dd, 0);
+				_dropdown.transition().delay(250).style('display', 'none');
 			}
 		}
 
@@ -367,23 +691,13 @@ var avlmenu = (function() {
 		var _button,
 			parent,
 			groupID,
-			styles,
+			styles = {},
 			data = [],
 			text = function(d) { return d.text; },
-			events = {};
+			events = {},
+			decorator;
 
-		function button(selection, _styles) {
-			if (selection) {
-				parent = selection;
-				groupID = '#'+selection.attr('id');
-			}
-			if (_styles) {
-				styles = _styles;
-			}
-			if (!(selection || parent)) {
-				parent = d3.select('body');
-			}
-
+		function button() {
 			_button = parent
 				.selectAll(groupID+' > .avl-menu-button')
 				.data(data);
@@ -394,13 +708,18 @@ var avlmenu = (function() {
 				.attr('class', 'avl-menu-button');
 
 			_button
-				.text(function(d) { return text(d); });
+				.text(function(d) { return text(d); })
+				.on(events);
 
-			if (styles) {
-				_button.style(styles);
+			if (decorator) {
+				_button.call(decorator.applyStyles);
 			}
-			_button.on(events);
-			events = {};
+		}
+		button.init = function(selection, _decorator) {
+			parent = selection;
+			groupID = '#'+selection.attr('id');
+			decorator = _decorator;
+			return button;
 		}
 		button.on = function(event, action) {
 			var obj = {};
@@ -441,42 +760,46 @@ var avlmenu = (function() {
 	avlmenu.Toggle = function() {
 		var _toggle,
 			parent,
+			decorator,
 			groupID,
-			styles,
 			data = [],
+			makeActive = -1,
 			text = function(d) { return d.text; },
 			select = function(d) { return d.select; },
 			deselect = function(d) { return d.deselect; },
-			multi = false;
+			multi = false,
+			deselectAll = true,
+			activeToggle = null;
 
-		function toggle(selection, _styles) {
-			if (selection) {
-				parent = selection;
-				groupID = '#'+selection.attr('id');
-			}
-			if (_styles) {
-				styles = _styles;
-			}
-			if (!(selection || parent)) {
-				parent = d3.select('body');
-			}
-
+		function toggle() {
 			_toggle = parent
-				.selectAll(groupID+' >.avl-menu-button')
+				.selectAll('.avl-menu-button')
 				.data(data);
 
 			_toggle.exit().remove();
 
 			_toggle.enter().append('a')
-				.attr('class', 'avl-menu-button');
+				.attr('class', 'avl-menu-button')
+				.each(function(d, i) {
+					this.selected = false;
+					if (i == makeActive) {
+						toggled.call(this, d);
+					}
+				});
 
 			_toggle
 				.text(function(d) { return text(d); })
-				.on('click', toggled);
+				.on('click', toggled)
 
-			if (styles) {
-				_toggle.style(styles);
+			if (decorator) {
+				_toggle.call(decorator);
 			}
+		}
+		toggle.init = function(selection, _decorator) {
+			groupId = '#'+selection.attr('id');
+			parent = selection;
+			decorator = _decorator;
+			return toggle;
 		}
 		toggle.data = function(d) {
 			if (!arguments.length) {
@@ -513,10 +836,31 @@ var avlmenu = (function() {
 			multi = m;
 			return toggle;
 		}
+		toggle.deselectAll = function(d) {
+			if (!arguments.length) {
+				return deselectAll;
+			}
+			deselectAll = d;
+			if (deselectAll && makeActive < 0) {
+				makeActive = 0;
+			}
+			return toggle;
+		}
+		toggle.makeActive = function(index) {
+			if (!arguments.length) {
+				return makeActive;
+			}
+			makeActive = index;
+			return toggle;
+		}
 
 		function toggled(d) {
 			var button = d3.select(this),
 				self = this;
+
+			if (!deselectAll && this.selected) {
+				return;
+			}
 
 			this.selected = !this.selected;
 
@@ -528,7 +872,7 @@ var avlmenu = (function() {
 						if (this.selected) {
 							var func = deselect(d);
 							if (func) {
-								func.bind(self)(d);
+								func.call(this, d);
 							}
 							this.selected = false;
 						}
@@ -540,13 +884,13 @@ var avlmenu = (function() {
 			if (this.selected) {
 				var func = select(d);
 				if (func) {
-					func.bind(self)(d);
+					func.call(this, d);
 				}
 			}
 			else if (!this.selected) {
 				var func = deselect(d);
 				if (func) {
-					func.bind(self)(d);
+					func.call(this, d);
 				}
 			}
 		}
@@ -555,7 +899,10 @@ var avlmenu = (function() {
 	}
 
 	avlmenu.Menubar = function() {
-		var _menubar;
+		var _menubar,
+			decorator = SelectionDecorator()
+				.styles({float:'left'})
+				.classes({'avl-menu-bar-item':true});
 
 		function menubar(selection) {
 			_menubar = selection.append('div')
@@ -563,7 +910,8 @@ var avlmenu = (function() {
 		}
 		menubar.append = function(object) {
 			_menubar.append('g').attr('id', uniqueGroupID)
-				.call(object, {float: 'left'});
+				.call(object.init, decorator);
+			object();
 			return menubar;
 		}
 
@@ -571,21 +919,71 @@ var avlmenu = (function() {
 	}
 
 	avlmenu.Sidebar = function() {
-		var _sidebar;
+		var _sidebar,
+			face,
+			top = '0px',
+			height = '100%',
+			open = true,
+			decorator = SelectionDecorator()
+				.styles({display:'block', 'max-width': '155px'})
+				.classes({'avl-menu-bar-item':true});
 
-		function sidebar(selection) {
+		function sidebar() {
+			_sidebar.style({top: top, height: height});
+		}
+
+		sidebar.init = function(selection) {
 			_sidebar = selection.append('div')
-				.attr('class', 'avl-menu-sidebar')
-				.style('max-height', function() {
-					var maxHeight = window.innerHeight-this.offsetTop;
-					return maxHeight+'px';
-				});
+				.on('click', toggle, true)
+				.attr('class', 'avl-menu-sidebar');
+
+			face = _sidebar.append('div')
+				.on('.avl-menu-sidebar', null)
+				.attr('class', 'avl-menu-sidebar-front');
+			return sidebar;
 		}
 		sidebar.append = function(object) {
-			_sidebar.append('g').attr('id', uniqueGroupID)
-				.call(object, {display: 'block', 'max-height': 'none'})
-				.append('div').style('height', '0px');
+			face.append('g').attr('id', uniqueGroupID)
+				.call(object.init, decorator);
+			object();
 			return sidebar;
+		}
+		sidebar.top = function(t) {
+			if (!arguments.length) {
+				return top;
+			}
+			top = t;
+			return sidebar;
+		}
+		sidebar.height = function(h) {
+			if (!arguments.length) {
+				return height;
+			}
+			height = h;
+			return sidebar;
+		}
+
+		function toggle() {
+			if (d3.event.target != this) {
+				return;
+			}
+
+			open = !open;
+
+			if (!open) {
+				_sidebar.transition().duration(500)
+					.style('width', '20px')
+				
+				face.transition().duration(500)
+					.style('width', '0px')
+			}
+			else {
+				_sidebar.transition().duration(500)
+					.style('width', '180px')
+
+				face.transition().duration(500)
+					.style('width', '165px')
+			}
 		}
 
 		return sidebar;

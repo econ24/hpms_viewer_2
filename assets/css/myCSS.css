@@ -9,7 +9,6 @@
 	margin: auto;
 	top: 10px;
 }
-
 .hpms-map-legend-label {
 	width: 80px;
 	height: 20px;
@@ -19,8 +18,56 @@
 	font-weight: bold;
 	display: inline;
 }
-
 .hpms-map-legend-label.last-label {
 	padding: 3px 5px 1px 0px;
 	text-align: right;
+}
+
+.hpms-interstates-zone {
+	stroke: rgba(255, 255, 255, 0.5);
+	fill: rgba(255, 255, 255, 0.25);
+}
+.hpms-interstates-zone-hide {
+	display: none;
+}
+.hpms-interstates-map-target {
+	fill: none;
+	stroke: rgba(255, 255, 255, 0.5);
+}
+
+.hpms-graph-svg {
+	display: block;
+	position: absolute;
+	left: 185px;
+	top: 60px;
+}
+
+.hpms-graph-svg rect {
+	cursor: pointer;
+}
+
+.x-axis path, .y-axis path {
+	fill: #412c43;
+}
+
+.x-axis text, .y-axis text {
+	font-weight: bolder;
+	fill: #412c43;
+}
+
+.hpms-bar-graph {
+	background-color: rgba(96, 78, 108, 0.5);
+}
+.hpms-line-graph {
+	background-color: none;
+}
+.hpms-graph-line {
+	opacity: 0.33;
+	stroke: #008;
+	stroke-width: 4px;
+	fill: none;
+}
+.hpms-line-highlight {
+	stroke: #000;
+	opacity: 0.5;
 }

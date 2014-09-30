@@ -303,7 +303,7 @@ var avlminimap = (function(){
 			clearColor = c;
 			return map;
 		}
-		map.draw = function(cb) {
+		map.draw = function() {
 			if (context != null) {
 				context.fillStyle = clearColor;
 				context.fillRect(0, 0, width, height);
@@ -311,10 +311,6 @@ var avlminimap = (function(){
 
 			for (var id in layerCache) {
 				layerCache[id].draw();
-			}
-
-			if (arguments.length) {
-				cb();
 			}
 		}
 		map.update = function() {

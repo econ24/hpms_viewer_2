@@ -1,6 +1,11 @@
 (function() {
 	var hpms = {};
 
+	hpms.active = false;
+	hpms.requests = [];
+	hpms.name = 'hpms_interstates';
+	hpms.updating = false;
+
 	var margin = { top: 30 };
 
 	var map,
@@ -8,8 +13,10 @@
 		layer = null,
 		layerData = [];
 
-	var activeStates = [],
-		activeInterstates = [];
+	var SVG,
+		JSON;
+
+	var activeInterstates = [];
 
 	var XHRcache = {};
 
@@ -17,6 +24,8 @@
 		quadtreeRoot;
 
 	var monitor;
+
+	var LOADING = 0;
 
 	var stroke = d3.scale.quantile()
 		.range(["#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8", "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"]);
@@ -31,19 +40,30 @@
 			.extent([[0,0],[window.innerWidth, window.innerHeight-margin.top]]);
 		quadtreeRoot = quadtree([]);
 
+		voronoi = d3.geom.voronoi()
+			.clipExtent([[0,0],[window.innerWidth,window.innerHeight-30]]);
+
 		var mapDiv = d3.select('#hpms-interstates').call(map),
 			canvas = mapDiv.selectAll('canvas'),
 			context = canvas.node().getContext('2d');
 
-		monitor = canvas_objects.CanvasMapMonitor()
-			.init(context, map.projection());
+		SVG = d3.select('#hpms-interstates').append('svg')
+			.style('position', 'absolute')
+			.style('display', 'block')
+			.attr('width', window.innerWidth)
+			.attr('height', window.innerHeight-margin.top)
+			.datum(quadtreeRoot);
 
-		canvas
-			.datum(quadtreeRoot)
-			.on('click', monitor.click)
+		targetGroup = SVG.append('g');
+
+		monitor = interstates_map_overlay.MapMonitor()
+			.projection(map.projection())
+			.init(SVG);
+
+		SVG.on('click', monitor.click)
 			.on('mouseover', monitor.enter)
 			.on('mousemove', monitor)
-			.on('mouseout', monitor.remove)
+			.on('mouseout', monitor.exit);
 
 		path = d3.geo.path()
 			.projection(map.projection());
@@ -53,9 +73,9 @@
 					  lineWidth: 8 });
 
 		d3.json('assets/data/us_states.json', function(error, data) {
-			var json = topojson.feature(data, data.objects.states);
+			JSON = topojson.feature(data, data.objects.states);
 
-			json.features = json.features
+			JSON.features = JSON.features
 				.filter(function(d) {
 					return d.id != 72 && d.id != 78 && d.id != 2 && d.id != 15;
 				});
@@ -63,7 +83,7 @@
 			d3.json('http://localhost:1337/hpms/interstates_by_state', function(error, data) {
 				var domain = [];
 
-				json.features.forEach(function(feat) {
+				JSON.features.forEach(function(feat) {
 					feat.properties.aadt = data[feat.id] || 0;
 					domain.push(feat.properties.aadt);
 				})
@@ -79,12 +99,12 @@
 					.range(["#ccff88", "#001100"]);
 
 				var baseLayer = map.Layer()
-					.data([json])
+					.data([JSON])
 					.styles({ fillStyle: function(d) { return fill(d.properties.aadt); },
 								strokeStyle: '#000', lineWidth: 1,
 							  	lineCap: 'round', lineJoin: 'round' });
 
-				map.zoomToBounds(json)
+				map.zoomToBounds(JSON)
 					.append(baseLayer);
 
 				map.append(layer);
@@ -94,18 +114,24 @@
 		})
 	}
 
-	hpms.selectedState = function(datum, array) {
-    	activeStates = array;
+	hpms.updateActiveInterstates = function(data, newInterstate) {
+		var datum = data.datum;
+		if (newInterstate) {
+			activeInterstates.push(datum);
+			addInterstate(datum);
+		}
+		else {
+			esc.arrayRemove(activeInterstates, datum);
+			removeInterstate(datum);
+		}
 	}
 
-	hpms.unselectedState = function(datum, array) {
-    	activeStates = array;
-    }
-
-	hpms.selectedInterstate = function(datum, array) {
-		activeInterstates = array;
-
+	function addInterstate(datum) {
+		LOADING++;
 		XHRcache[datum] = d3.json('http://localhost:1337/hpms/'+datum+'/interstate_geo', function(error, data) {
+			delete XHRcache[datum];
+			LOADING--;
+
 			var json = topojson.feature(data, data.objects.geo);
 			json.id = datum;
 
@@ -113,26 +139,23 @@
 
 			json.features.forEach(function(feat) {
 				var centroid = path.centroid(feat);
-
 				centroid.circle = objects.Circle(centroid[0], centroid[1], 2);
 				centroid.properties = feat.properties;
 
+				feat.centroid = centroid;
+
 				quadtreeRoot.add(centroid);
 			})
+
+			monitor.update(quadtreeRoot);
 
 			layerData.push(json);
 
 			calcStrokeDomain();
 
-			layer.data(layerData);
-
-			map.draw(function() { monitor.snapShot().draw(); });
-
-			monitor
-				.update(quadtreeRoot);
-
-			delete XHRcache[datum];
-		})
+			layer.data(layerData)
+				.draw();
+		});
 	}
 
 	function calcStrokeDomain() {
@@ -143,44 +166,36 @@
 		stroke.domain(domain);
 	}
 
-	hpms.unselectedInterstate = function(datum, array) {
-		activeInterstates = array;
-
+	function removeInterstate(datum) {
 		if (datum in XHRcache) {
 			XHRcache[datum].abort();
 			delete XHRcache[datum];
+			LOADING--;
+			return;
 		}
 
 		layerData = layerData.filter(function(d) { return d.id != datum; });
 
-		if (activeInterstates.length) {
-			calcStrokeDomain();
-		}
-
-		var treeData = [];
+		var data = [],
+			domain = [];
 
 		layerData.forEach(function(collection) {
 			collection.features.forEach(function(feat) {
-				var centroid = path.centroid(feat);
-
-				centroid.circle = objects.Circle(centroid[0], centroid[1], 2);
-				centroid.properties = feat.properties;
-
-				treeData.push(centroid);
+				data.push(feat.centroid);
+				domain.push(feat.properties.aadt);
 			})
 		})
-		quadtreeRoot = quadtree(treeData);
+		quadtreeRoot = quadtree(data);
+
+		stroke.domain(domain);
+
+		SVG.datum(quadtreeRoot);
+
+		monitor.update(quadtreeRoot);
 
 		layer.data(layerData);
 
-		map.draw(function() { monitor.snapShot().draw(); });
-
-		monitor
-			.update(quadtreeRoot);
-	}
-
-	function myFunc(d) {
-
+		map.draw();
 	}
 
 	this.hpms_interstates = hpms;

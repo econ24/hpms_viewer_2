@@ -10,11 +10,15 @@ function myFunc() {
 		.style('height', (window.innerHeight-30)+'px');
 
 	d3.select('#hpms-data')
-		.attr('width', window.innerWidth+'px')
-		.attr('height', (window.innerHeight-30)+'px');
+		.style('width', window.innerWidth+'px')
+		.style('height', (window.innerHeight-30)+'px');
+
+	avlmenu.Footer()
+		.init(d3.select('body'))
+		.text('Powered by avl, a product of AVAIL')();
 
 	hpms_menu.init();
 	hpms_map.init();
-	hpms_data.init();
 	hpms_interstates.init();
+	hpms_data.init();
 }

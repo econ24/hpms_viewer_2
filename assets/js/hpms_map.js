@@ -1,83 +1,74 @@
 (function() {
 	var hpms = {};
 
-	var map,
-		layerCache = {},
-		AADTvalues = [],
-		renderedTypes = 0;
+	hpms.active = false;
+	hpms.requests = [];
+	hpms.name = 'hpms_map';
+	hpms.updating = false;
 
-	var activeStates = [],
-		activeInterstates = [];
+	var map,
+		layerCache = LayerCache(10),
+		AADTvalues = [],
+		renderedTypes = 1;
+
+	var activeStates = [];
 
 	var popup,
 		floater,
 		legend;
 
-	var TYPES_PER_ZOOM = [0,0,0,0,1,1,1,1,2,2,3,3,4,4,7];
+	var TYPES_PER_ZOOM = {
+		4:1,
+		5:1,
+		6:1,
+		7:1,
+		8:2,
+		9:2,
+		10:3,
+		11:3,
+		12:4,
+		13:4,
+		14:7,
+		15:7,
+		16:7,
+		17:7
+	};
 
-	var strokeWidth,
-		stroke;
+	var strokeWidth = d3.scale.ordinal()
+			.domain([1,2,3,4,5,6,7])
+			.range([5,4,3,2,2,2,2]),
+		stroke = d3.scale.quantile()
+			.range(["#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8",
+					"#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"]);
 
-    var format;
+    var format = d3.format('>,.0f');
 
 	var mouseoverSelection = null;
 
     var clickedRoute = null;
 
-    var textOrder = {
-    	Route: 0,
-    	AADT: 1,
-    	Type: 2,
-    	Segments: 3,
-    	State: 4,
-    	States: 4
-    }
-
 	hpms.init = function() {
 		map = avlmap.Map({id:'#hpms-map', minZoom: 4})
-			.addControl({type:'info', position:'top-right'});
-
-		map.onZoom(mapZoomWatch);
-
-		format = d3.format('>,.0f');
-
-		strokeWidth = d3.scale.ordinal()
-			.domain([1,2,3,4,5,6,7])
-			.range([5,4,3,2,2,2,2])
-
-		stroke = d3.scale.quantile()
-			.range(["#313695", "#4575b4", "#74add1", "#abd9e9", "#e0f3f8", "#fee090", "#fdae61", "#f46d43", "#d73027", "#a50026"]);
+			.height(window.innerHeight-30)
+			.addControl({type:'info', position:'top-right'})
+			.on('zoomchange.hpms', mapZoomWatch);
 
 		var dims = map.dimensions();
 
-		// popup = avlmenu.Popup()
-		// 	.position('bottom-right')
-		// 	.activationType('manual')
-		// 	.bounds(d3.select('#hpms-map'))
+		popup = avlmenu.Popup()
+			.position('bottom-right')
+			.init(d3.select('#hpms-map'));
 
 		d3.select('#hpms-map')
 			.on('click', function() {
+  				if (d3.event.defaultPrevented) return;
 				clickedRoute = null;
-				// popup.visible(false)();
+				popup.visible(false)();
 			})
 
-		// floater = avlmenu.Popup()
-		// 	.position('floater')
-		// 	.bounds(d3.select('#hpms-map'))
-		// 	.activationType('mouseover')
-		// 	.text(function(d) { 
-		// 		if (d.properties.route) {
-		// 			return [
-		// 				['Route', d.properties.route],
-		// 				['AADT', d.properties.aadt],
-		// 				['Type', d.properties.type]
-		// 			];
-		// 		}
-		// 		return [
-		// 			['AADT', d.properties.aadt],
-		// 			['Type', d.properties.type]
-		// 		]; 
-		// 	});
+		floater = avlmenu.Popup()
+			.position('floater')
+			.init(d3.select('#hpms-map'));
 
 		legend = d3.select('#hpms-map')
 			.append('div')
@@ -90,60 +81,50 @@
 		var url = "http://api.tiles.mapbox.com/v3/am3081.map-lkbhqenw/{z}/{x}/{y}.png";
 		map.addLayer(avlmap.RasterLayer({url: url}));
 
-		function mapZoomWatch() {
-			var types = TYPES_PER_ZOOM[map.zoom()];
-
+		function mapZoomWatch(zoom) {
+			var types = TYPES_PER_ZOOM[zoom];
 			if (types != renderedTypes) {
-				calcStrokeDomain();
+				renderedTypes = types;
+				if (activeStates.length) {
+					calcStrokeDomain();
+				}
 			}
-			renderedTypes = types;
 		}
 	}
 
-	hpms.selectedState = function(datum, array) {
-    	activeStates = array;
-
-    	addLayer(datum);
+	hpms.updateActiveStates = function(data, newState) {
+		var datum = data.datum;
+		if (newState) {
+    		activeStates.push(datum);
+			addState(datum);
+		}
+		else {
+			esc.arrayRemove(activeStates, datum);
+			removeState(datum);
+		}
 	}
 
-	hpms.unselectedState = function(datum, array){
-    	activeStates = array;
+	function addState(datum) {
+    	calcStrokeDomain(function() {
+    		if (activeStates.length > 1) {
+    			colorPaths();
+    		}
+    		map.addLayer(layerCache.add(datum));
+    	});
 
-    	removeLayer(datum);
+    	if (activeStates.length == 1) {
+    		transition(legend, { opacity: 1 });
+    	}
 	}
 
-	hpms.selectedInterstate = function(datum, array) {
-		activeInterstates = array;
-
-    	addLayer(datum);
-	}
-
-	hpms.unselectedInterstate = function(datum, array) {
-		activeInterstates = array;
-
-    	removeLayer(datum);
-	}
-
-	function addLayer(datum) {
-    	var layer = checkCache(datum);
-
-    	calcStrokeDomain();
-
-    	transition(legend, { opacity: 1 });
-
-    	map.addLayer(layer);
-	}
-
-	function removeLayer(datum) {
-    	var layer = checkCache(datum);
-
-    	map.removeLayer(layer);
+	function removeState(datum) {
+    	map.removeLayer(layerCache.remove(datum));
 
     	if (activeStates.length) {
-    		calcStrokeDomain();
+    		calcStrokeDomain(colorPaths);
     	}
     	else {
-    		transition(legend, {opacity: 0});
+    		transition(legend, { opacity: 0 });
     	}
 	}
 
@@ -154,73 +135,38 @@
 			.style(style);
 	}
 
-	function checkCache(datum) {
-		var layer = datum;
-		if (!(layer in layerCache)) {
-			layerCache[layer] = createNewLayer(datum);
-		}
-		return layerCache[layer];
-	}
+    function floaterText(data) {
+    	var table = [];
 
-	function createNewLayer(datum) {
-		var url = "http://localhost:8000/" + datum + "/{z}/{x}/{y}.json";
+    	if (data.properties.route) {
+    		if (checkMajorInterstate(data.properties)) {
+    			table.push(['Interstate ' + data.properties.route]);
+    		}
+    		else if (data.properties.type == 1) {
+    			table.push(['Highway ' + data.properties.route]);
+    		}
+    		else {
+    			table.push(['Route ' + data.properties.route]);
+    		}
+	    	table[0].tableHeader = true;
+	    	table[0].span = 2;
+    	}
 
-		var layer = avlmap.VectorLayer({url: url});
-		layer.drawTile = drawTile;
-
-		return layer;
-	}
-
-	function drawTile(group, json, tilePath) {
-      	group.selectAll("path")
-          	.data(json.features.sort(function(a, b) {
-          		return b.properties.type - a.properties.type;
-          	}))
-			.enter().append("path")
-			.attr('class', function(d) {
-				if (d.properties.route) {
-					if (checkMajorInterstate(d)) {
-						return 'avl-path '+'route-'+d.properties.route+'-'+d.properties.type;
-					}
-					return 'avl-path '+'route-'+d.properties.route+'-'+d.properties.type+'-'+d.properties.state;
-				}
-				return 'avl-path';
-			})
-			.style('stroke-width', function(d) { return strokeWidth(d.properties.type); })
-			.style('stroke', function(d) { return stroke(d.properties.aadt); })
-			.attr("d", tilePath)
-			.on('mouseover', function(d) {
-				if (d.properties.route) {
-					if (checkMajorInterstate(d)) {
-						mouseoverSelection = d3.selectAll('.route-'+d.properties.route+'-'+d.properties.type)
-							.style('stroke-width', 10);
-					}
-					else {
-						mouseoverSelection = d3.selectAll('.route-'+d.properties.route+'-'+d.properties.type+'-'+d.properties.state)
-							.style('stroke-width', 10);
-					}
-				}
-				else {
-					mouseoverSelection = null;
-				}
-			})
-			.on('mouseout', function(d) {
-				if (mouseoverSelection !== null) {
-					mouseoverSelection
-						.style('stroke-width', function(d) { return strokeWidth(d.properties.type); })
-					mouseoverSelection = null;
-				}
-			})
-			.on('click', showRouteData)
-			// .call(floater);
+    	table.push(['AADT', format(data.properties.aadt)], ['Type', data.properties.type]);
+    	
+    	return [table];
     }
 
-	function calcStrokeDomain() {
+	function calcStrokeDomain(cb) {
+		var callback = arguments.length;
+
 	    d3.json("http://localhost:1337/hpms/aadt")
-	        .post(JSON.stringify({states: activeStates, types: TYPES_PER_ZOOM[map.zoom()]}), function(error, data) {
+	        .post(JSON.stringify({states: activeStates, types: renderedTypes}), function(error, data) {
 	        	stroke.domain(data);
 
-    			colorPaths();
+	        	if (callback) {
+	        		cb();
+	        	}
 
     			generateLabels();
 	        })
@@ -229,6 +175,7 @@
 	function colorPaths(filter) {
 	    d3.selectAll('.avl-tile')
 	    	.selectAll('path')
+	    	.transition().duration(500)
 	    	.style('stroke', function(d) { return stroke(d.properties.aadt); })
 	}
 
@@ -261,10 +208,10 @@
 			.style('background-color', color);
 	}
 
-    function checkMajorInterstate(r) {
+    function checkMajorInterstate(props) {
     	// only check interstate type 1s with a route number of the form:
     	// x0 or x5...where x is a numeric digit
-    	return +r.properties.type === 1 && (+r.properties.route%5) === 0 && 100-(+r.properties.route) > 0;
+    	return +props.type === 1 && (+props.route%5) === 0 && 100-(+props.route) > 0;
     }
 
     function showRouteData(r) {
@@ -274,7 +221,7 @@
     		var clicked,
     			url;
 
-			if (checkMajorInterstate(r)) {
+			if (checkMajorInterstate(r.properties)) {
 				clicked = 'route-'+r.properties.route+'-'+r.properties.type;
 			}
 			else {
@@ -283,50 +230,135 @@
 
 			if (clicked == clickedRoute) {
 				clickedRoute = null;
-				// popup.visible(false)();
+				popup.visible(false)();
 				return;
 			}
 			clickedRoute = clicked;
 
 			url = 'http://localhost:1337/hpms/'+r.properties.route;
 
-    		if (checkMajorInterstate(r)) {
-    			url += '/interstate_data';
+    		if (checkMajorInterstate(r.properties)) {
+    			url += '/average_interstate_data';
     		}
     		else {
     			url += '/'+r.properties.type+
 					   '/'+r.properties.state+
-					   '/intrastate_data';
+					   '/average_intrastate_data';
     		}
 
-		    d3.json(url)
-		        .post(JSON.stringify({states: activeStates, types: TYPES_PER_ZOOM[map.zoom()]}), function(error, data) {
+		    d3.json(url, function(error, data) {
+	        	data.segments = format(data.segments);
+	        	data.aadt = format(data.aadt);
+        		data.states = data.states
+        			.map(function(d) { return esc.fips2state(d, true); })
+        			.join(', ');
 
-		        	data.Segments = format(data.Segments);
-		        	data.AADT = format(data.AADT);
+	        	var table = [];
 
-		        	if (data.States) {
-		        		data.States = data.States
-		        			.map(function(d) { return esc.fips2state(d, true); })
-		        			.join(', ');
-		        	}
-		        	else {
-		        		data.State = esc.fips2state(data.State, true);
-		        	}
+	    		if (checkMajorInterstate(data)) {
+	    			table.push(['Interstate ' + data.route]);
+	    		}
+	    		else if (data.type == 1) {
+	    			table.push(['Highway ' + data.route]);
+	    		}
+	    		else {
+	    			table.push(['Route ' + data.route]);
+	    		}
+		    	table[0].tableHeader = true;
+		    	table[0].span = 2;
 
-		        	var textData = [];
-		        	for (var key in data) {
-		        		textData.push([key, data[key]]);
-		        	}
-		        	textData.sort(function(a, b) {
-		        		return textOrder[a[0]] - textOrder[b[0]];
-		        	})
+		    	table.push(
+		    		['AADT', data.aadt], ['Type', data.type],
+		    		['Segments', data.segments],
+		    		['States', data.states]
+		    	);
 
-		    		// popup
-		    		// 	.text(textData)
-		    		// 	.visible(true)();
-		        })
+	    		popup.data([table])
+	    			.visible(true)();
+	        })
     	}
+    }
+
+	function drawTile(group, json, tilePath) {
+      	group.selectAll("path")
+          	.data(json.features.sort(function(a, b) {
+          		return a.properties.aadt - b.properties.aadt;
+          	}))
+			.enter().append("path")
+			.attr('class', function(d) {
+				if (d.properties.route) {
+					if (checkMajorInterstate(d.properties)) {
+						return 'avl-path '+'route-'+d.properties.route+'-'+d.properties.type;
+					}
+					return 'avl-path '+'route-'+d.properties.route+'-'+d.properties.type+'-'+d.properties.state;
+				}
+				return 'avl-path';
+			})
+			.style('stroke-width', function(d) { return strokeWidth(d.properties.type); })
+			.style('stroke', function(d) { return stroke(d.properties.aadt); })
+			.attr("d", tilePath)
+			.on('mouseover', function(d) {
+				if (d.properties.route) {
+					if (checkMajorInterstate(d.properties)) {
+						mouseoverSelection = d3.selectAll('.route-'+d.properties.route+'-'+d.properties.type)
+							.style('stroke-width', 10);
+					}
+					else {
+						mouseoverSelection = d3.selectAll('.route-'+d.properties.route+'-'+d.properties.type+'-'+d.properties.state)
+							.style('stroke-width', 10);
+					}
+				}
+				else {
+					mouseoverSelection = null;
+				}
+				floater
+					.data(floaterText(d))
+					.visible(true)();
+			})
+			.on('mouseout', function(d) {
+				if (mouseoverSelection !== null) {
+					mouseoverSelection
+						.style('stroke-width', function(d) { return strokeWidth(d.properties.type); })
+					mouseoverSelection = null;
+				}
+				floater.visible(false)();
+			})
+			.on('click', showRouteData);
+    }
+
+    function LayerCache(maxSize) {
+    	var	layerList = [],
+    		listIndex = 0,
+    		layerCache = {};
+
+    	var cache = {};
+
+    	cache.add = function(id) {
+    		if (!(id in layerCache)) {
+    			layerList[listIndex] = id;
+    			layerCache[id] = newLayer(id);
+    			listIndex = (listIndex+1)%maxSize;
+    		}
+    		return layerCache[id];
+    	}
+    	cache.remove = function(id) {
+    		var layer = layerCache[id];
+    		if (!(id in layerList)) {
+    			delete layerCache[id];
+    		}
+    		return layer;
+    	}
+
+		function newLayer(id) {
+			var url = "http://localhost:8000/" + id + "/{z}/{x}/{y}.json",
+				layer = avlmap.VectorLayer({ url: url, id: 'vector-layer-'+id, name: hpms_menu.formatName(id) });
+
+			layer.drawTile = drawTile;
+
+			return layer;
+		}
+
+    	return cache;
     }
 
 	this.hpms_map = hpms;

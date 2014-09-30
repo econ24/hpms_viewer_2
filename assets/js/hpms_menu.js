@@ -1,8 +1,8 @@
 (function() {
 	var hpms = {};
 
-	var activeStates =[],
-		activeInterstates = [];
+	var dispatcher,
+		pageLoader;
 
 	hpms.init = function() {
 		var menubar = avlmenu.Menubar();
@@ -15,19 +15,32 @@
 		menubar.append(dropdown);
 
 		var selector = avlmenu.Dropdown()
-			.data([{ text: 'States', id: 'states' },
-				   { text: 'Interstates', id: 'interstates' }
+			.data([{ text: 'States (A-I)', id: 'states-a-i' },
+					{ text: 'States (J-N)', id: 'states-j-n' },
+					{ text: 'States (O-Z)', id: 'states-o-z' },
+				   	{ text: 'Interstates', id: 'interstates' }
 			]);
 
         dropdown.append(selector);
 
 		var tabs = avlmenu.Tab()
 			.data([
-				{ text: 'States', id: '#hpms-map' },
-				{ text: 'Interstates', id: '#hpms-interstates', },
-				{ text: 'Data', id: '#hpms-data' }
+				{ text: 'States Tab', id: '#hpms-map', obj: hpms_map, types: ['statechange'] },
+				{ text: 'Interstates Tab', id: '#hpms-interstates', obj: hpms_interstates, types: ['statechange', 'interstatechange'] },
+				{ text: 'Data Tab', id: '#hpms-data', obj: hpms_data, types: ['interstatechange'] }
 			]);
 		menubar.append(tabs);
+
+		tabs.on('tabfocus', onTabSelect);
+		tabs.on('tabunfocus', onTabDeselect)
+
+		function onTabSelect(d, i) {
+			d.obj.active = true;
+			pageLoader(d.obj);
+		}
+		function onTabDeselect(d, i) {
+			d.obj.active = false;
+		}
 
 	    d3.json("http://localhost:1337/hpms", function(error, data) {
 			var toggles = avlmenu.Toggle()
@@ -43,21 +56,37 @@
         		return 0;
         	})
 
-        	var toggleData = [];
+        	var togglesA_I = [],
+        		togglesJ_N = [],
+        		togglesO_Z = [];
 
         	data.forEach(function(state) {
         		var obj = {
-        			text: formatName(state.table_name),
+        			text: hpms.formatName(state.table_name),
         			datum: state.table_name,
-					select: updateSelectedState,
-					deselect: updateUnselectedState
+        			fips: state.state_fips,
+					select: selectState,
+					deselect: unselectState
         		}
-        		toggleData.push(obj);
+        		if (obj.text < 'J') {
+        			togglesA_I.push(obj);
+        		}
+        		else if (obj.text < 'O') {
+        			togglesJ_N.push(obj);
+        		}
+        		else {
+        			togglesO_Z.push(obj);
+        		}
             });
 
-            toggles.data(toggleData);
+            toggles.data(togglesA_I);
+            selector.append(toggles, { id: 'states-a-i' });
 
-            selector.append(toggles, { id: 'states' });
+            toggles.data(togglesJ_N);
+            selector.append(toggles, { id: 'states-j-n' });
+
+            toggles.data(togglesO_Z);
+            selector.append(toggles, { id: 'states-o-z' });
         });
 
 	    d3.json("http://localhost:1337/hpms/interstates", function(error, data) {
@@ -72,8 +101,8 @@
         		var obj = {
         			text: 'Interstate '+route.route,
         			datum: route.route,
-					select: updateSelectedInterstate,
-					deselect: updateUnselectedInterstate
+					select: selectInterstate,
+					deselect: unselectInterstate
         		}
         		toggleData.push(obj);
             });
@@ -82,33 +111,17 @@
 
             selector.append(toggles, { id: 'interstates' });
         })
+
+        dispatcher = d3.dispatch('statechange', 'interstatechange');
+        pageLoader = PageLoader().init();
+
+        hpms_map.active = true;
+	}
+	hpms.register = function(type, cb) {
+		dispatcher.on(type, cb);
 	}
 
-	function updateSelectedState(data) {
-    	activeStates.push(data.datum);
-
-		hpms_map.selectedState(data.datum, activeStates);
-	}
-
-	function updateUnselectedState(data) {
-    	esc.arrayRemove(activeStates, data.datum);
-
-		hpms_map.unselectedState(data.datum, activeStates);
-	}
-
-	function updateSelectedInterstate(data) {
-    	activeInterstates.push(data.datum);
-
-		hpms_interstates.selectedInterstate(data.datum, activeInterstates);
-	}
-
-	function updateUnselectedInterstate(data) {
-    	esc.arrayRemove(activeInterstates, data.datum);
-
-		hpms_interstates.unselectedInterstate(data.datum, activeInterstates);
-	}
-
-    function formatName(name) {
+    hpms.formatName = function(name) {
         var regex = /(\d+)/;
         name = name.replace(regex, '');
 
@@ -117,6 +130,20 @@
 
         return esc.capitalizeAll(name);
     }
+
+	function selectState(data) {
+		dispatcher.statechange.call(this, data, true);
+	}
+	function unselectState(data) {
+		dispatcher.statechange.call(this, data, false);
+	}
+
+	function selectInterstate(data) {
+		dispatcher.interstatechange.call(this, data, true);
+	}
+	function unselectInterstate(data) {
+		dispatcher.interstatechange.call(this, data, false);
+	}
 
 	this.hpms_menu = hpms;
 })()
